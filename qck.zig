@@ -1,15 +1,4 @@
-// Playing around with SDL + TTF.
-//
-// Based on `hello_sdl.c`, zig + SDL code from https://github.com/andrewrk/sdl-zig-demo.
-//
-// Resources:
-// - http://wiki.libsdl.org/CategoryAPI
-// - https://www.libsdl.org/projects/SDL_ttf/docs/SDL_ttf.html
-//
-// Unrelatedly, https://ziglang.org/learn/samples/ lead me to
-// raylib, which looks like a really neat library to get started with
-// game programming without Godot or Unity:
-// https://github.com/raysan5/raylib
+// qck - type something, find something (quick)!
 const c = @cImport({
     @cInclude("SDL2/SDL.h");
     @cInclude("SDL2/SDL_ttf.h");
@@ -545,7 +534,7 @@ pub fn main() !void {
 
     var window_width = glyph_width * 100;
     var window_height = glyph_height * 20;
-    const screen = c.SDL_CreateWindow("hello fonts", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, window_width, window_height, c.SDL_WINDOW_BORDERLESS | c.SDL_WINDOW_OPENGL) orelse {
+    const screen = c.SDL_CreateWindow("qck", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, window_width, window_height, c.SDL_WINDOW_BORDERLESS | c.SDL_WINDOW_OPENGL) orelse {
         c.SDL_Log("Unable to create window: %s", c.SDL_GetError());
         return error.SDLInitializationFailed;
     };

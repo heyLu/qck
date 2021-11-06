@@ -1,3 +1,3 @@
-hello_sdl: Makefile build.zig hello_sdl.zig
+qck: Makefile build.zig qck.zig
 	zig build -Drelease-safe
-	cp zig-out/bin/hello_sdl .
+	cp zig-out/bin/qck .
