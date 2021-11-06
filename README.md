@@ -2,6 +2,8 @@
 
 `qck` is a local metasearch tool that tries to help you find things quickly.
 
+![a GIF of qck in action, displaying the various searches](./qck-demo.gif)
+
 ## History
 
 This grew out of experimenting with SDL, first [in C][C] and then [using Zig][Zig].
