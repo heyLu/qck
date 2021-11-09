@@ -4,6 +4,11 @@ pub fn build(b: *Builder) void {
     const mode = b.standardReleaseOptions();
     const exe = b.addExecutable("qck", "./qck.zig");
     exe.setBuildMode(mode);
+
+    exe.addIncludeDir("tracy");
+    exe.addCSourceFile("tracy/TracyClient.cpp", &[_][]const u8{"-DTRACY_ENABLE"});
+    exe.linkSystemLibrary("c++");
+
     exe.linkSystemLibrary("SDL2");
     exe.linkSystemLibrary("SDL2_ttf");
     exe.linkSystemLibrary("c");
