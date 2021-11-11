@@ -584,7 +584,7 @@ pub fn main() !void {
     var num_lines: i32 = 0;
     var output_length: usize = 0;
 
-    var changed = true; // initially true to print help even with no command
+    var commandChanged = true; // initially true to print help even with no command
 
     var hasChanged = false;
     var lastChange: u32 = 0;
@@ -593,9 +593,12 @@ pub fn main() !void {
         const loop = tracy.trace(@src(), "loop");
         defer loop.end();
 
+        defer c.SDL_Delay(16);
+
         const input = tracy.trace(@src(), "input");
 
         var confirmed = false;
+        var inputChanged = false;
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event) != 0) {
             const ctrlPressed = (keyboardState[c.SDL_SCANCODE_LCTRL] != 0);
@@ -621,6 +624,7 @@ pub fn main() !void {
                                 }
                                 pos = 0;
                                 msg_overlay[pos] = '_';
+                                inputChanged = true;
                             },
                             c.SDLK_k => {
                                 var i: usize = 0;
@@ -629,6 +633,7 @@ pub fn main() !void {
                                 }
                                 msg[max_chars] = 0;
                                 pos = 0;
+                                inputChanged = true;
                             },
                             c.SDLK_c => {
                                 const clipboard_text = try gpa.dupeZ(u8, result);
@@ -651,7 +656,7 @@ pub fn main() !void {
                                 }
                                 c.SDL_free(clipboard_text);
 
-                                changed = true;
+                                commandChanged = true;
                             },
                             else => {},
                         }
@@ -669,7 +674,7 @@ pub fn main() !void {
                                 }
                                 pos = if (pos == 0) max_chars - 1 else (pos - 1) % (max_chars - 1);
                                 msg_overlay[pos] = '_';
-                                changed = true;
+                                commandChanged = true;
                             },
                             c.SDLK_RETURN => {
                                 skip = 0;
@@ -679,6 +684,7 @@ pub fn main() !void {
                             c.SDLK_UP => {
                                 if (skip > 0) {
                                     skip -= 1;
+                                    inputChanged = true;
                                 }
                             },
                             c.SDLK_PAGEUP => {
@@ -687,28 +693,35 @@ pub fn main() !void {
                                 } else {
                                     skip -= 10;
                                 }
+                                inputChanged = true;
                             },
                             c.SDLK_DOWN => {
                                 skip += 1;
+                                inputChanged = true;
                             },
                             c.SDLK_PAGEDOWN => {
                                 skip += 10;
+                                inputChanged = true;
                             },
                             c.SDLK_HOME => {
                                 skip = 0;
+                                inputChanged = true;
                             },
                             c.SDLK_END => {
                                 if (num_lines > 10) {
                                     skip = num_lines - 10;
+                                    inputChanged = true;
                                 }
                             },
                             c.SDLK_LEFT => {
                                 if (skip_horizontal > 0) {
                                     skip_horizontal -= 1;
+                                    inputChanged = true;
                                 }
                             },
                             c.SDLK_RIGHT => {
                                 skip_horizontal += 1;
+                                inputChanged = true;
                             },
                             else => {},
                         }
@@ -721,7 +734,7 @@ pub fn main() !void {
                         msg_overlay[pos] = ' ';
                         pos = (pos + 1) % (max_chars - 1);
 
-                        changed = true;
+                        commandChanged = true;
                     }
                 },
                 else => {},
@@ -731,14 +744,14 @@ pub fn main() !void {
 
         const cmd = std.mem.trim(u8, std.mem.sliceTo(&msg, 0), &std.ascii.spaces);
 
-        if (changed and c.SDL_GetTicks() - lastChange > 100) {
+        if (commandChanged and c.SDL_GetTicks() - lastChange > 100) {
             const run = tracy.trace(@src(), "run");
             for (commands) |*command| {
                 _ = try command.run(gpa, cmd, confirmed);
             }
             run.end();
 
-            changed = false;
+            commandChanged = false;
             lastChange = c.SDL_GetTicks();
 
             hasChanged = true;
@@ -748,18 +761,23 @@ pub fn main() !void {
         }
 
         const is_active = tracy.trace(@src(), "is_active");
+        var rerender = true;
         // do not render if nothing has changed
         for (commands) |*command| {
             if (command.isActive(cmd)) {
                 const out = try command.output();
                 if (!hasChanged and out.len == output_length) {
-                    continue;
+                    rerender = false;
                 } else {
                     hasChanged = false;
                 }
             }
         }
         is_active.end();
+
+        if (!inputChanged and !rerender) {
+            continue;
+        }
 
         const render_init = tracy.trace(@src(), "render_init");
         _ = c.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 100);
@@ -948,8 +966,6 @@ pub fn main() !void {
         }
 
         _ = c.SDL_RenderPresent(renderer);
-
-        c.SDL_Delay(16);
     }
 
     // clean up memory and processes
