@@ -589,7 +589,11 @@ pub fn main() !void {
     var hasChanged = false;
     var lastChange: u32 = 0;
 
+    const frame_name = "Frame";
     while (!quit) {
+        tracy.frameStart(frame_name);
+        defer tracy.frameEnd(frame_name);
+
         const loop = tracy.trace(@src(), "loop");
         defer loop.end();
 
@@ -778,6 +782,9 @@ pub fn main() !void {
         if (!inputChanged and !rerender) {
             continue;
         }
+
+        const render = tracy.trace(@src(), "render");
+        defer render.end();
 
         const render_init = tracy.trace(@src(), "render_init");
         _ = c.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 100);
