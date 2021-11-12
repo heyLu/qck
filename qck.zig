@@ -907,14 +907,14 @@ pub fn main() !void {
                     var skip_next = false;
                     var was_overdraw = false;
                     for (part_text) |ch, p| {
-                        const render_overdraw = tracy.traceName(@src(), "render_overdraw");
-                        defer render_overdraw.end();
-
                         if (skip_next) {
                             skip_next = false;
                             continue;
                         }
                         if (ch == 8 and p + 1 < part_text.len) {
+                            const render_overdraw = tracy.traceName(@src(), "render_overdraw");
+                            defer render_overdraw.end();
+
                             //std.debug.print("overdraw '{c}'\n", .{part_text[p + 1]});
                             const result_text = c.TTF_RenderUTF8_Shaded(font, &[_]u8{ part_text[p + 1], 0 }, fg_color, bg_color);
                             const ctfs = tracy.traceName(@src(), "SDL_CreateTextureFromSurface");
