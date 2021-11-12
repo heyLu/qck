@@ -595,7 +595,8 @@ pub fn main() !void {
         const loop = tracy.traceName(@src(), "loop");
         defer loop.end();
 
-        defer c.SDL_Delay(16);
+        var frame_start = c.SDL_GetTicks();
+        defer waitFrame(frame_start);
 
         const input = tracy.traceName(@src(), "input");
 
@@ -977,6 +978,21 @@ pub fn main() !void {
     for (commands) |*command| {
         try command.deinit();
     }
+}
+
+fn waitFrame(frame_start: u32) void {
+    const frame_duration = c.SDL_GetTicks() - frame_start;
+    if (frame_duration > 16) {
+        return;
+    }
+    var wait = 16 - frame_duration;
+    if (wait < 0) {
+        return;
+    }
+    if (wait > 16) {
+        wait = 16;
+    }
+    c.SDL_Delay(wait);
 }
 
 // tests
