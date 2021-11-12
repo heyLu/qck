@@ -747,7 +747,7 @@ pub fn main() !void {
 
         const cmd = std.mem.trim(u8, std.mem.sliceTo(&msg, 0), &std.ascii.spaces);
 
-        if (commandChanged and c.SDL_GetTicks() - lastChange > 100) {
+        if (commandChanged and c.SDL_GetTicks() - lastChange > 200) {
             const run = tracy.traceName(@src(), "run");
             for (commands) |*command| {
                 _ = try command.run(gpa, cmd, confirmed);
