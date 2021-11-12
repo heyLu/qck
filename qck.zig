@@ -156,6 +156,7 @@ const ProcessWithOutput = struct {
 const Runner = struct {
     name: []const u8,
     run_always: bool,
+    select: bool = false,
     process: ?ProcessWithOutput = null,
 
     toArgv: fn (cmd: []const u8) []const []const u8,
@@ -338,7 +339,7 @@ const ManPageRunner = struct {
 
 const SearchRunner = struct {
     fn init() Runner {
-        return Runner{ .name = "search", .run_always = true, .toArgv = toArgv, .isActive = isActive };
+        return Runner{ .name = "search", .run_always = true, .select = true, .toArgv = toArgv, .isActive = isActive };
     }
 
     fn isActive(cmd: []const u8) bool {
@@ -360,7 +361,7 @@ const SearchRunner = struct {
 
 const FileRunner = struct {
     fn init() Runner {
-        return Runner{ .name = "file", .run_always = true, .toArgv = toArgv, .isActive = isActive };
+        return Runner{ .name = "file", .run_always = true, .select = true, .toArgv = toArgv, .isActive = isActive };
     }
 
     fn isActive(cmd: []const u8) bool {
@@ -376,7 +377,7 @@ const FileRunner = struct {
 
 const FirefoxHistoryRunner = struct {
     fn init() Runner {
-        return Runner{ .name = "ff", .run_always = true, .toArgv = toArgv, .isActive = isActive };
+        return Runner{ .name = "ff", .run_always = true, .select = true, .toArgv = toArgv, .isActive = isActive };
     }
 
     fn isActive(cmd: []const u8) bool {
@@ -875,6 +876,10 @@ pub fn main() !void {
                     var fnt = font;
                     var fg_color = white;
                     var bg_color = black;
+
+                    if (command.select and i == 1) {
+                        bg_color = gray;
+                    }
 
                     var part_text = part.?;
                     if (std.mem.startsWith(u8, part_text, "0m")) {
