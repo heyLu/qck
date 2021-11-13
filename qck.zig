@@ -397,6 +397,27 @@ const FirefoxHistoryRunner = struct {
 
 // TODO: window switcher (do i even want that?)
 
+const LaunchRunner = struct {
+    fn init() Runner {
+        return Runner{ .name = "launch", .run_always = true, .select = true, .toArgv = toArgv, .isActive = isActive };
+    }
+
+    fn isActive(cmd: []const u8) bool {
+        return !std.mem.containsAtLeast(u8, cmd, 1, " ") and (cmd.len > 0 or std.mem.startsWith(u8, cmd, "launch "));
+    }
+
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
+        const match = if (std.mem.startsWith(u8, cmd, "launch"))
+            cmd["launch".len..]
+        else
+            cmd;
+
+        // NO idea why bufPrint is required, but without `cmd` will just be some random bit of memory, which is rude.
+        _ = std.fmt.bufPrint(&cmd_buf, "find $(echo $PATH | tr ':' ' ') -type f | sort | grep --color=always '{s}'\x00", .{match}) catch "???";
+        return &[_][]const u8{ "bash", "-c", &cmd_buf };
+    }
+};
+
 const LogsRunner = struct {
     fn init() Runner {
         return Runner{ .name = "logs", .run_always = true, .toArgv = toArgv, .isActive = isActive };
@@ -590,6 +611,7 @@ pub fn main() !void {
         FileRunner.init(),
         FirefoxHistoryRunner.init(),
         LogsRunner.init(),
+        LaunchRunner.init(),
         QalcRunner.init(),
         SelfDocRunner.init(),
     };
@@ -882,20 +904,22 @@ pub fn main() !void {
 
                 var j: c_int = 0;
 
+                var fnt = font;
+                var fg_color = white;
+                var bg_color = black;
+
                 // TODO: implement some terminal colors
                 var parts = std.mem.split(u8, line_buf[0..repl_size], "\x1B[");
                 var part = parts.next();
                 while (part != null) : (part = parts.next()) {
-                    var fnt = font;
-                    var fg_color = white;
-                    var bg_color = black;
-
                     if (command.select and i == 1) {
                         bg_color = gray;
                     }
 
                     var part_text = part.?;
-                    if (std.mem.startsWith(u8, part_text, "0m")) {
+                    if (std.mem.startsWith(u8, part_text, "m")) {
+                        part_text = part_text[1..];
+                    } else if (std.mem.startsWith(u8, part_text, "0m")) {
                         part_text = part_text[2..];
                     } else if (std.mem.startsWith(u8, part_text, "37m")) {
                         part_text = part_text[3..];
@@ -908,6 +932,10 @@ pub fn main() !void {
                         fnt = bold_font;
                         part_text = part_text[5..];
                         fg_color = c.SDL_Color{ .r = 205, .g = 205, .b = 0, .a = 255 };
+                    } else if (std.mem.startsWith(u8, part_text, "01;31m")) {
+                        fnt = bold_font;
+                        part_text = part_text[6..];
+                        fg_color = c.SDL_Color{ .r = 205, .g = 0, .b = 0, .a = 255 };
                     } else if (std.mem.startsWith(u8, part_text, "30;43m")) {
                         part_text = part_text[6..];
                         bg_color = c.SDL_Color{ .r = 205, .g = 205, .b = 0, .a = 255 };
