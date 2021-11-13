@@ -154,7 +154,7 @@ const ProcessWithOutput = struct {
 };
 
 const Runner = struct {
-    name: [*c]const u8,
+    name: []const u8,
     run_always: bool,
     select: bool = false,
     process: ?ProcessWithOutput = null,
@@ -170,6 +170,8 @@ const Runner = struct {
         if (!self.isActive(cmd)) {
             return false;
         }
+
+        tracy.message(self.name);
 
         // stop already running command, restart with new cmd
         if (self.process) |*process| {
@@ -189,7 +191,10 @@ const Runner = struct {
 
         const argv = self.toArgv(cmd, is_confirmed, selection);
         std.debug.print("{s} -> {s}\n", .{ cmd, argv });
+
+        const trace_spawn = tracy.trace(@src(), "spawn");
         self.process = try ProcessWithOutput.spawn(allocator, argv, 1024 * 1024);
+        trace_spawn.end();
 
         return true;
     }
@@ -489,8 +494,8 @@ const SelfDocRunner = struct {
 };
 
 pub fn main() !void {
-    tracy.frame();
-    const init = tracy.traceName(@src(), "init");
+    var frame = tracy.frame(null);
+    const init = tracy.trace(@src(), "init");
 
     var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
@@ -535,7 +540,7 @@ pub fn main() !void {
     }
     defer c.TTF_Quit();
 
-    const init_fonts = tracy.traceName(@src(), "init_fonts");
+    const init_fonts = tracy.trace(@src(), "init_fonts");
     var font_file = if (args.len > 1) args[1] else "/usr/share/fonts/TTF/FantasqueSansMono-Regular.ttf";
     const font = c.TTF_OpenFont(font_file, 16) orelse {
         c.SDL_Log("Unable to load font: %s", c.TTF_GetError());
@@ -560,7 +565,7 @@ pub fn main() !void {
     }
     var glyph_height = c.TTF_FontLineSkip(font);
 
-    const init_window = tracy.traceName(@src(), "init_window");
+    const init_window = tracy.trace(@src(), "init_window");
     var window_width = glyph_width * 100;
     var window_height = glyph_height * 20;
     const window = c.SDL_CreateWindow("qck", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, window_width, window_height, c.SDL_WINDOW_BORDERLESS | c.SDL_WINDOW_OPENGL) orelse {
@@ -638,17 +643,19 @@ pub fn main() !void {
     var lastChange: u32 = 0;
 
     init.end();
+    frame.end();
 
     while (!quit) {
-        tracy.frame();
+        frame = tracy.frame(null);
+        defer frame.end();
 
-        const loop = tracy.traceName(@src(), "loop");
+        const loop = tracy.trace(@src(), "loop");
         defer loop.end();
 
-        var frame_start = c.SDL_GetTicks();
+        var frame_start = c.SDL_GetPerformanceCounter();
         defer waitFrame(frame_start);
 
-        const input = tracy.traceName(@src(), "input");
+        const input = tracy.trace(@src(), "input");
 
         var confirmed = false;
         var inputChanged = false;
@@ -804,7 +811,7 @@ pub fn main() !void {
         const cmd = std.mem.trim(u8, std.mem.sliceTo(&msg, 0), &std.ascii.spaces);
 
         if (commandChanged and c.SDL_GetTicks() - lastChange > 200) {
-            const run = tracy.traceName(@src(), "run");
+            const run = tracy.trace(@src(), "run");
             for (commands) |*command| {
                 _ = try command.run(gpa, cmd, confirmed, "");
             }
@@ -819,7 +826,7 @@ pub fn main() !void {
             skip_horizontal = 0;
         }
 
-        const is_active = tracy.traceName(@src(), "is_active");
+        const is_active = tracy.trace(@src(), "is_active");
         var rerender = true;
         // do not render if nothing has changed
         for (commands) |*command| {
@@ -838,10 +845,10 @@ pub fn main() !void {
             continue;
         }
 
-        const render = tracy.traceName(@src(), "render");
+        const render = tracy.trace(@src(), "render");
         defer render.end();
 
-        const render_init = tracy.traceName(@src(), "render_init");
+        const render_init = tracy.trace(@src(), "render_init");
         _ = c.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 100);
         //_ = c.SDL_SetRenderDrawBlendMode(renderer, c.SDL_BlendMode.SDL_BLENDMODE_BLEND);
         _ = c.SDL_RenderClear(renderer);
@@ -874,6 +881,9 @@ pub fn main() !void {
         var line_buf = [_]u8{0} ** 10000;
         var part_buf = [_]u8{0} ** 10000;
         for (commands) |*command| {
+            const trace_command = tracy.trace(@src(), "command");
+            defer trace_command.end();
+
             if (!command.isActive(cmd)) {
                 continue;
             }
@@ -884,9 +894,8 @@ pub fn main() !void {
             // TODO: indicate if command is still running
 
             {
-                const result_text = c.TTF_RenderUTF8_Shaded(font, command.name, gray, c.SDL_Color{ .r = 0, .g = 0, .b = 0, .a = 255 });
-                const command_length = std.mem.len(command.name);
-                _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = window_width - @intCast(c_int, command_length) * glyph_width, .y = 0, .w = @intCast(c_int, command_length) * glyph_width, .h = glyph_height });
+                const result_text = c.TTF_RenderUTF8_Shaded(font, command.name.ptr, gray, c.SDL_Color{ .r = 0, .g = 0, .b = 0, .a = 255 });
+                _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = window_width - @intCast(c_int, command.name.len) * glyph_width, .y = 0, .w = @intCast(c_int, command.name.len) * glyph_width, .h = glyph_height });
                 c.SDL_FreeSurface(result_text);
             }
 
@@ -900,7 +909,7 @@ pub fn main() !void {
                 }
             }
             while (line != null and i * glyph_height < window_height) {
-                const render_line = tracy.traceName(@src(), "render_line");
+                const render_line = tracy.trace(@src(), "render_line");
                 defer render_line.end();
 
                 var skipped_line = line.?[std.math.min(skip_horizontal, line.?.len)..];
@@ -985,11 +994,12 @@ pub fn main() !void {
                             continue;
                         }
                         if (ch == 8 and p + 1 < part_text.len) {
-                            const render_overdraw = tracy.traceName(@src(), "render_overdraw");
+                            const render_overdraw = tracy.trace(@src(), "render_overdraw");
                             defer render_overdraw.end();
 
                             //std.debug.print("overdraw '{c}'\n", .{part_text[p + 1]});
                             const result_text = c.TTF_RenderUTF8_Shaded(font, &[_]u8{ part_text[p + 1], 0 }, fg_color, bg_color);
+
                             _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = (k - 1) * glyph_width, .y = i * glyph_height, .w = @intCast(c_int, 1) * glyph_width, .h = glyph_height });
                             c.SDL_FreeSurface(result_text);
 
@@ -1003,19 +1013,20 @@ pub fn main() !void {
                     }
                     part_buf[l] = 0;
 
-                    const render_part = tracy.traceName(@src(), "render_part");
+                    const render_part = tracy.trace(@src(), "render_part");
 
-                    const r1 = tracy.traceName(@src(), "TTF_RenderUTF8_Shaded");
+                    const r1 = tracy.trace(@src(), "TTF_RenderUTF8_Shaded");
                     const result_text = c.TTF_RenderUTF8_Shaded(fnt, &part_buf, fg_color, bg_color);
                     r1.end();
 
-                    if (was_overdraw and c.SDL_SetSurfaceBlendMode(result_text, c.SDL_BLENDMODE_ADD) != 0) {
+                    // TODO: fix overdraw
+                    if (c.SDL_SetSurfaceBlendMode(result_text, if (was_overdraw) c.SDL_BLENDMODE_ADD else c.SDL_BLENDMODE_NONE) != 0) {
                         c.SDL_Log("Unable set surface blend mode: %s", c.SDL_GetError());
                     }
 
                     _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = j * glyph_width, .y = i * glyph_height, .w = @intCast(c_int, l) * glyph_width, .h = glyph_height });
 
-                    const r5 = tracy.traceName(@src(), "SDL_FreeSurface");
+                    const r5 = tracy.trace(@src(), "SDL_FreeSurface");
                     c.SDL_FreeSurface(result_text);
                     r5.end();
 
@@ -1026,19 +1037,22 @@ pub fn main() !void {
                 i += 1;
                 line = lines.next();
             }
+
+            // only allow one command
+            break;
         }
 
-        const trace_st = tracy.traceName(@src(), "screen texture");
+        const trace_st = tracy.trace(@src(), "screen texture");
         const screen_texture = c.SDL_CreateTextureFromSurface(renderer, screen);
         trace_st.end();
 
-        const trace_render_copy = tracy.traceName(@src(), "SDL_RenderCopy");
+        const trace_render_copy = tracy.trace(@src(), "SDL_RenderCopy");
         _ = c.SDL_RenderCopy(renderer, screen_texture, null, null);
         trace_render_copy.end();
 
         defer c.SDL_DestroyTexture(screen_texture);
 
-        const trace_render_present = tracy.traceName(@src(), "SDL_RenderPresent");
+        const trace_render_present = tracy.trace(@src(), "SDL_RenderPresent");
         _ = c.SDL_RenderPresent(renderer);
         trace_render_present.end();
     }
