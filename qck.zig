@@ -245,10 +245,19 @@ const GoDocRunner = struct {
         return cmd.len > 3 and std.mem.startsWith(u8, cmd, "go ");
     }
 
-    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
-        // NO idea why bufPrint is required, but without `cmd` will just be some random bit of memory, which is rude.
-        _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{cmd["go ".len..]}) catch "???";
-        return &[_][]const u8{ "go", "doc", &cmd_buf };
+    fn toArgv(cmd: []const u8, is_confirmed: bool, _: []const u8) []const []const u8 {
+        if (is_confirmed) {
+            const prefix = "xdg-open https://pkg.go.dev/";
+            _ = std.fmt.bufPrint(&cmd_buf, "{s}{s} && swaymsg '[app_id=\"firefox\"]' focus\x00", .{ prefix, cmd["go ".len..] }) catch "???";
+            if (std.mem.indexOf(u8, cmd_buf[prefix.len..], ".")) |pos| {
+                cmd_buf[prefix.len + pos] = '#';
+            }
+            return &[_][]const u8{ "bash", "-c", &cmd_buf };
+        } else {
+            // NO idea why bufPrint is required, but without `cmd` will just be some random bit of memory, which is rude.
+            _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{cmd["go ".len..]}) catch "???";
+            return &[_][]const u8{ "go", "doc", &cmd_buf };
+        }
     }
 };
 
@@ -261,6 +270,7 @@ const PythonHelpRunner = struct {
         return cmd.len > 3 and std.mem.startsWith(u8, cmd, "py ");
     }
 
+    // TODO: confirm should open in browser
     fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "import {s}; help({s});\x00", .{ std.mem.sliceTo(cmd["py ".len..], '.'), cmd["py ".len..] }) catch "???";
         return &[_][]const u8{ "python", "-c", &cmd_buf };
@@ -351,6 +361,7 @@ const SearchRunner = struct {
         return cmd.len > "s ".len and std.mem.startsWith(u8, cmd, "s ");
     }
 
+    // TODO: confirm should open at position
     fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{cmd["s ".len..]}) catch "???";
         argv_buf[0] = "ag";
@@ -364,6 +375,7 @@ const SearchRunner = struct {
     }
 };
 
+// TODO: confirm should open
 const FileRunner = struct {
     fn init() Runner {
         return Runner{ .name = "file", .run_always = true, .select = true, .toArgv = toArgv, .isActive = isActive };
@@ -389,6 +401,7 @@ const FirefoxHistoryRunner = struct {
         return cmd.len > "ff ".len and std.mem.startsWith(u8, cmd, "ff ");
     }
 
+    // TODO: confirm should open in browser
     fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         // FIXME: replace with choice + selection whenever that is implemented
         const cmd_fmt =
@@ -411,6 +424,7 @@ const LaunchRunner = struct {
         return !std.mem.containsAtLeast(u8, cmd, 1, " ") and (cmd.len > 0 or std.mem.startsWith(u8, cmd, "launch "));
     }
 
+    // TODO: confirm should launch (with logs if "application", i.e. no spaces in command?)
     fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         const match = if (std.mem.startsWith(u8, cmd, "launch"))
             cmd["launch".len..]
@@ -810,15 +824,23 @@ pub fn main() !void {
 
         const cmd = std.mem.trim(u8, std.mem.sliceTo(&msg, 0), &std.ascii.spaces);
 
-        if (commandChanged and c.SDL_GetTicks() - lastChange > 200) {
+        if (confirmed or (commandChanged and c.SDL_GetTicks() - lastChange > 200)) {
             const run = tracy.trace(@src(), "run");
             for (commands) |*command| {
-                _ = try command.run(gpa, cmd, confirmed, "");
+                const handled = try command.run(gpa, cmd, confirmed, "");
+                if (confirmed and handled) {
+                    // FIXME: don't wait here, print output until done?
+                    if (command.process) |*process| {
+                        _ = try process.process.wait();
+                    }
+                    quit = true;
+                }
             }
             run.end();
 
             commandChanged = false;
             lastChange = c.SDL_GetTicks();
+            confirmed = false;
 
             hasChanged = true;
 
