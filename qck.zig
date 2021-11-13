@@ -489,6 +489,9 @@ const SelfDocRunner = struct {
 };
 
 pub fn main() !void {
+    tracy.frame();
+    const init = tracy.traceName(@src(), "init");
+
     var general_purpose_allocator = std.heap.GeneralPurposeAllocator(.{}){};
     defer {
         _ = general_purpose_allocator.detectLeaks();
@@ -532,6 +535,7 @@ pub fn main() !void {
     }
     defer c.TTF_Quit();
 
+    const init_fonts = tracy.traceName(@src(), "init_fonts");
     var font_file = if (args.len > 1) args[1] else "/usr/share/fonts/TTF/FantasqueSansMono-Regular.ttf";
     const font = c.TTF_OpenFont(font_file, 16) orelse {
         c.SDL_Log("Unable to load font: %s", c.TTF_GetError());
@@ -546,6 +550,7 @@ pub fn main() !void {
         return error.TTFInitializationFailed;
     };
     defer c.TTF_CloseFont(bold_font);
+    init_fonts.end();
 
     // assume monospace font
     var glyph_width: c_int = 0;
@@ -555,6 +560,7 @@ pub fn main() !void {
     }
     var glyph_height = c.TTF_FontLineSkip(font);
 
+    const init_window = tracy.traceName(@src(), "init_window");
     var window_width = glyph_width * 100;
     var window_height = glyph_height * 20;
     const window = c.SDL_CreateWindow("qck", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, window_width, window_height, c.SDL_WINDOW_BORDERLESS | c.SDL_WINDOW_OPENGL) orelse {
@@ -587,6 +593,7 @@ pub fn main() !void {
         return error.SDLInitializationFailed;
     }
     c.SDL_Log("Renderer: %s", renderer_info.name);
+    init_window.end();
 
     var msg = "                                                                                                    ".*;
     var msg_overlay = "                                                                                                    ".*;
@@ -626,6 +633,8 @@ pub fn main() !void {
 
     var hasChanged = false;
     var lastChange: u32 = 0;
+
+    init.end();
 
     while (!quit) {
         tracy.frame();
