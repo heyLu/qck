@@ -536,21 +536,36 @@ pub fn main() !void {
 
     var window_width = glyph_width * 100;
     var window_height = glyph_height * 20;
-    const screen = c.SDL_CreateWindow("qck", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, window_width, window_height, c.SDL_WINDOW_BORDERLESS | c.SDL_WINDOW_OPENGL) orelse {
+    const window = c.SDL_CreateWindow("qck", c.SDL_WINDOWPOS_CENTERED, c.SDL_WINDOWPOS_CENTERED, window_width, window_height, c.SDL_WINDOW_BORDERLESS | c.SDL_WINDOW_OPENGL) orelse {
         c.SDL_Log("Unable to create window: %s", c.SDL_GetError());
         return error.SDLInitializationFailed;
     };
-    defer c.SDL_DestroyWindow(screen);
+    defer c.SDL_DestroyWindow(window);
+
+    var screen = c.SDL_CreateRGBSurface(0, window_width, window_height, 32, 0, 0, 0, 0) orelse {
+        c.SDL_Log("Unable to create screen surface: %s", c.SDL_GetError());
+        return error.SDLInitializationFailed;
+    };
+    defer c.SDL_FreeSurface(screen);
 
     const op: f32 = 0.5;
-    if (c.SDL_SetWindowOpacity(screen, op) != 0) {
+    if (c.SDL_SetWindowOpacity(window, op) != 0) {
         c.SDL_Log("Unable to make window transparent: %s", c.SDL_GetError());
     }
     var opacity: f32 = 10.0;
-    _ = c.SDL_GetWindowOpacity(screen, &opacity);
+    _ = c.SDL_GetWindowOpacity(window, &opacity);
     c.SDL_Log("opacity: %f", opacity);
 
-    const renderer = c.SDL_CreateRenderer(screen, -1, c.SDL_RENDERER_ACCELERATED);
+    const renderer = c.SDL_CreateRenderer(window, -1, c.SDL_RENDERER_ACCELERATED) orelse {
+        c.SDL_Log("Unable to create renderer: %s", c.SDL_GetError());
+        return error.SDLInitializationFailed;
+    };
+    var renderer_info: c.SDL_RendererInfo = undefined;
+    if (c.SDL_GetRendererInfo(renderer, &renderer_info) != 0) {
+        c.SDL_Log("Unable to get renderer info: %s", c.SDL_GetError());
+        return error.SDLInitializationFailed;
+    }
+    c.SDL_Log("Renderer: %s", renderer_info.name);
 
     var msg = "                                                                                                    ".*;
     var msg_overlay = "                                                                                                    ".*;
@@ -615,6 +630,12 @@ pub fn main() !void {
                         c.SDL_WINDOWEVENT_SIZE_CHANGED => {
                             window_width = event.window.data1;
                             window_height = event.window.data2;
+
+                            c.SDL_FreeSurface(screen);
+                            screen = c.SDL_CreateRGBSurface(0, window_width, window_height, 32, 0, 0, 0, 0) orelse {
+                                c.SDL_Log("Unable to create screen surface: %s", c.SDL_GetError());
+                                return error.SDLInitializationFailed;
+                            };
                         },
                         else => {},
                     }
@@ -791,6 +812,8 @@ pub fn main() !void {
         //_ = c.SDL_SetRenderDrawBlendMode(renderer, c.SDL_BlendMode.SDL_BLENDMODE_BLEND);
         _ = c.SDL_RenderClear(renderer);
 
+        _ = c.SDL_FillRect(screen, null, 0);
+
         // thanks to https://stackoverflow.com/questions/22886500/how-to-render-text-in-sdl2 for some actually useful code here
         const white: c.SDL_Color = c.SDL_Color{ .r = 255, .g = 255, .b = 255, .a = 255 };
         const gray: c.SDL_Color = c.SDL_Color{ .r = 150, .g = 150, .b = 150, .a = 255 };
@@ -800,22 +823,16 @@ pub fn main() !void {
             // Shaded vs Solid gives a nicer output, with solid the output
             // was squiggly and not aligned with a baseline.
             const text = c.TTF_RenderUTF8_Shaded(font, &msg, white, black);
-            const ctfs = tracy.traceName(@src(), "SDL_CreateTextureFromSurface");
-            const texture = c.SDL_CreateTextureFromSurface(renderer, text);
-            ctfs.end();
-            c.SDL_FreeSurface(text);
-            _ = c.SDL_RenderCopy(renderer, texture, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = @intCast(c_int, msg.len) * glyph_width, .h = glyph_height });
+            defer c.SDL_FreeSurface(text);
+            _ = c.SDL_BlitSurface(text, null, screen, &c.SDL_Rect{ .x = 0, .y = 0, .w = @intCast(c_int, msg.len) * glyph_width, .h = glyph_height });
         }
         {
             const text = c.TTF_RenderUTF8_Shaded(font, &msg_overlay, white, c.SDL_Color{ .r = 0, .g = 0, .b = 0, .a = 0 });
-            const ctfs = tracy.traceName(@src(), "SDL_CreateTextureFromSurface");
-            const texture = c.SDL_CreateTextureFromSurface(renderer, text);
-            ctfs.end();
-            if (c.SDL_SetTextureBlendMode(texture, c.SDL_BLENDMODE_ADD) != 0) {
-                c.SDL_Log("Unable set texture blend mode: %s", c.SDL_GetError());
+            defer c.SDL_FreeSurface(text);
+            if (c.SDL_SetSurfaceBlendMode(text, c.SDL_BLENDMODE_ADD) != 0) {
+                c.SDL_Log("Unable set surface blend mode: %s", c.SDL_GetError());
             }
-            c.SDL_FreeSurface(text);
-            _ = c.SDL_RenderCopy(renderer, texture, null, &c.SDL_Rect{ .x = 0, .y = 0, .w = @intCast(c_int, msg.len) * glyph_width, .h = glyph_height });
+            _ = c.SDL_BlitSurface(text, null, screen, &c.SDL_Rect{ .x = 0, .y = 0, .w = @intCast(c_int, msg.len) * glyph_width, .h = glyph_height });
         }
         render_init.end();
 
@@ -836,12 +853,8 @@ pub fn main() !void {
                 const name = try gpa.dupeZ(u8, command.name);
                 const result_text = c.TTF_RenderUTF8_Shaded(font, name, gray, c.SDL_Color{ .r = 0, .g = 0, .b = 0, .a = 255 });
                 gpa.free(name);
-                const ctfs = tracy.traceName(@src(), "SDL_CreateTextureFromSurface");
-                const result_texture = c.SDL_CreateTextureFromSurface(renderer, result_text);
-                ctfs.end();
-                _ = c.SDL_RenderCopy(renderer, result_texture, null, &c.SDL_Rect{ .x = window_width - @intCast(c_int, command.name.len) * glyph_width, .y = 0, .w = @intCast(c_int, command.name.len) * glyph_width, .h = glyph_height });
+                _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = window_width - @intCast(c_int, command.name.len) * glyph_width, .y = 0, .w = @intCast(c_int, command.name.len) * glyph_width, .h = glyph_height });
                 c.SDL_FreeSurface(result_text);
-                c.SDL_DestroyTexture(result_texture);
             }
 
             //std.debug.print("{s} {d} {d}\n", .{ command.process.is_running(), command.process.stdout_buf.items.len, command.process.stdout_buf.capacity });
@@ -922,12 +935,8 @@ pub fn main() !void {
 
                             //std.debug.print("overdraw '{c}'\n", .{part_text[p + 1]});
                             const result_text = c.TTF_RenderUTF8_Shaded(font, &[_]u8{ part_text[p + 1], 0 }, fg_color, bg_color);
-                            const ctfs = tracy.traceName(@src(), "SDL_CreateTextureFromSurface");
-                            const result_texture = c.SDL_CreateTextureFromSurface(renderer, result_text);
-                            ctfs.end();
-                            _ = c.SDL_RenderCopy(renderer, result_texture, null, &c.SDL_Rect{ .x = (k - 1) * glyph_width, .y = i * glyph_height, .w = @intCast(c_int, 1) * glyph_width, .h = glyph_height });
+                            _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = (k - 1) * glyph_width, .y = i * glyph_height, .w = @intCast(c_int, 1) * glyph_width, .h = glyph_height });
                             c.SDL_FreeSurface(result_text);
-                            c.SDL_DestroyTexture(result_texture);
 
                             skip_next = true;
                             was_overdraw = true;
@@ -945,27 +954,15 @@ pub fn main() !void {
                     const result_text = c.TTF_RenderUTF8_Shaded(fnt, &part_buf, fg_color, bg_color);
                     r1.end();
 
-                    const r2 = tracy.traceName(@src(), "SDL_CreateTextureFromSurface");
-                    const result_texture = c.SDL_CreateTextureFromSurface(renderer, result_text);
-                    r2.end();
-
-                    const r3 = tracy.traceName(@src(), "SDL_SetTextureBlendMode");
-                    if (was_overdraw and c.SDL_SetTextureBlendMode(result_texture, c.SDL_BLENDMODE_ADD) != 0) {
-                        c.SDL_Log("Unable set texture blend mode: %s", c.SDL_GetError());
+                    if (was_overdraw and c.SDL_SetSurfaceBlendMode(result_text, c.SDL_BLENDMODE_ADD) != 0) {
+                        c.SDL_Log("Unable set surface blend mode: %s", c.SDL_GetError());
                     }
-                    r3.end();
 
-                    const r4 = tracy.traceName(@src(), "SDL_RenderCopy");
-                    _ = c.SDL_RenderCopy(renderer, result_texture, null, &c.SDL_Rect{ .x = j * glyph_width, .y = i * glyph_height, .w = @intCast(c_int, l) * glyph_width, .h = glyph_height });
-                    r4.end();
+                    _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = j * glyph_width, .y = i * glyph_height, .w = @intCast(c_int, l) * glyph_width, .h = glyph_height });
 
                     const r5 = tracy.traceName(@src(), "SDL_FreeSurface");
                     c.SDL_FreeSurface(result_text);
                     r5.end();
-
-                    const r6 = tracy.traceName(@src(), "SDL_DestroyTexture");
-                    c.SDL_DestroyTexture(result_texture);
-                    r6.end();
 
                     j += @intCast(c_int, part_text.len);
                     render_part.end();
@@ -976,7 +973,19 @@ pub fn main() !void {
             }
         }
 
+        const trace_st = tracy.traceName(@src(), "screen texture");
+        const screen_texture = c.SDL_CreateTextureFromSurface(renderer, screen);
+        trace_st.end();
+
+        const trace_render_copy = tracy.traceName(@src(), "SDL_RenderCopy");
+        _ = c.SDL_RenderCopy(renderer, screen_texture, null, null);
+        trace_render_copy.end();
+
+        defer c.SDL_DestroyTexture(screen_texture);
+
+        const trace_render_present = tracy.traceName(@src(), "SDL_RenderPresent");
         _ = c.SDL_RenderPresent(renderer);
+        trace_render_present.end();
     }
 
     // clean up memory and processes
