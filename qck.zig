@@ -605,6 +605,9 @@ pub fn main() !void {
 
     const keyboardState = c.SDL_GetKeyboardState(null);
 
+    var self_doc_runner = SelfDocRunner.init();
+    _ = try self_doc_runner.run(gpa, "", false, "");
+
     c.SDL_StartTextInput();
     var commands = [_]Runner{
         GoDocRunner.init(),
@@ -620,7 +623,7 @@ pub fn main() !void {
         LogsRunner.init(),
         LaunchRunner.init(),
         QalcRunner.init(),
-        SelfDocRunner.init(),
+        self_doc_runner,
     };
 
     var quit = false;
@@ -629,7 +632,7 @@ pub fn main() !void {
     var num_lines: i32 = 0;
     var output_length: usize = 0;
 
-    var commandChanged = true; // initially true to print help even with no command
+    var commandChanged = false;
 
     var hasChanged = false;
     var lastChange: u32 = 0;
