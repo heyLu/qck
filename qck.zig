@@ -1063,19 +1063,14 @@ pub fn main() !void {
     }
 }
 
-fn waitFrame(frame_start: u32) void {
-    const frame_duration = c.SDL_GetTicks() - frame_start;
-    if (frame_duration > 16) {
+fn waitFrame(frame_start: u64) void {
+    const frame_duration = c.SDL_GetPerformanceCounter() - frame_start;
+    const elapsed_ms = @intToFloat(f64, frame_duration) / @intToFloat(f64, c.SDL_GetPerformanceFrequency()) * 1000.0;
+    const frame_time = 1000.0 / 60.0;
+    if (elapsed_ms > frame_time) {
         return;
     }
-    var wait = 16 - frame_duration;
-    if (wait < 0) {
-        return;
-    }
-    if (wait > 16) {
-        wait = 16;
-    }
-    c.SDL_Delay(wait);
+    c.SDL_Delay(@floatToInt(u32, std.math.floor(frame_time - elapsed_ms)));
 }
 
 // tests
