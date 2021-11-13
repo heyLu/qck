@@ -947,6 +947,18 @@ pub fn main() !void {
                     } else if (std.mem.startsWith(u8, part_text, "30;43m")) {
                         part_text = part_text[6..];
                         bg_color = c.SDL_Color{ .r = 205, .g = 205, .b = 0, .a = 255 };
+                    } else if (std.mem.startsWith(u8, part_text, "0;1;31m")) {
+                        part_text = part_text[7..];
+                        fnt = bold_font;
+                        fg_color = c.SDL_Color{ .r = 205, .g = 0, .b = 0, .a = 255 };
+                    } else if (std.mem.startsWith(u8, part_text, "0;1;39m")) { // Default foreground color
+                        part_text = part_text[7..];
+                        fnt = bold_font;
+                        fg_color = white;
+                    } else if (std.mem.startsWith(u8, part_text, "0;38;5;245m")) {
+                        part_text = part_text[11..];
+                        // TODO: calculate color correctly
+                        fg_color = gray;
                     } else if (std.mem.startsWith(u8, part_text, "K")) {
                         // no idea what this is, skipping it
                         part_text = part_text[1..];
