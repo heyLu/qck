@@ -159,10 +159,10 @@ const Runner = struct {
     select: bool = false,
     process: ?ProcessWithOutput = null,
 
-    toArgv: fn (cmd: []const u8) []const []const u8,
+    toArgv: fn (cmd: []const u8, is_confirmed: bool, selection: []const u8) []const []const u8,
     isActive: fn (cmd: []const u8) bool,
 
-    fn run(self: *Runner, allocator: *std.mem.Allocator, cmd: []const u8, is_confirmed: bool) !bool {
+    fn run(self: *Runner, allocator: *std.mem.Allocator, cmd: []const u8, is_confirmed: bool, selection: []const u8) !bool {
         if (!self.run_always and !is_confirmed) {
             return false;
         }
@@ -187,7 +187,7 @@ const Runner = struct {
             }
         }
 
-        const argv = self.toArgv(cmd);
+        const argv = self.toArgv(cmd, is_confirmed, selection);
         std.debug.print("{s} -> {s}\n", .{ cmd, argv });
         self.process = try ProcessWithOutput.spawn(allocator, argv, 1024 * 1024);
 
@@ -240,7 +240,7 @@ const GoDocRunner = struct {
         return cmd.len > 3 and std.mem.startsWith(u8, cmd, "go ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         // NO idea why bufPrint is required, but without `cmd` will just be some random bit of memory, which is rude.
         _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{cmd["go ".len..]}) catch "???";
         return &[_][]const u8{ "go", "doc", &cmd_buf };
@@ -256,7 +256,7 @@ const PythonHelpRunner = struct {
         return cmd.len > 3 and std.mem.startsWith(u8, cmd, "py ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "import {s}; help({s});\x00", .{ std.mem.sliceTo(cmd["py ".len..], '.'), cmd["py ".len..] }) catch "???";
         return &[_][]const u8{ "python", "-c", &cmd_buf };
     }
@@ -271,7 +271,7 @@ const PythonRunner = struct {
         return cmd.len > 3 and std.mem.startsWith(u8, cmd, "py! ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "print({s})\x00", .{cmd["py! ".len..]}) catch "???";
         return &[_][]const u8{ "python", "-c", &cmd_buf };
     }
@@ -286,7 +286,7 @@ const RubyHelpRunner = struct {
         return cmd.len > 3 and std.mem.startsWith(u8, cmd, "rb ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{cmd["rb ".len..]}) catch "???";
         return &[_][]const u8{ "ri", &cmd_buf };
     }
@@ -301,7 +301,7 @@ const RubyRunner = struct {
         return cmd.len > 3 and std.mem.startsWith(u8, cmd, "rb! ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "puts({s})\x00", .{cmd["rb! ".len..]}) catch "???";
         return &[_][]const u8{ "ruby", "-e", &cmd_buf };
     }
@@ -316,7 +316,7 @@ const HelpRunner = struct {
         return std.mem.endsWith(u8, cmd, " --help");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{cmd[0 .. cmd.len - " --help".len]}) catch "???";
         return &[_][]const u8{ &cmd_buf, "--help" };
     }
@@ -331,7 +331,7 @@ const ManPageRunner = struct {
         return cmd.len > "man ".len + 2 and std.mem.startsWith(u8, cmd, "man ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "MAN_KEEP_FORMATTING=yesplease man {s}\x00", .{cmd["man ".len..]}) catch "???";
         return &[_][]const u8{ "bash", "-c", &cmd_buf };
     }
@@ -346,7 +346,7 @@ const SearchRunner = struct {
         return cmd.len > "s ".len and std.mem.startsWith(u8, cmd, "s ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{cmd["s ".len..]}) catch "???";
         argv_buf[0] = "ag";
         argv_buf[1] = "--color";
@@ -368,7 +368,7 @@ const FileRunner = struct {
         return cmd.len > "file ".len and std.mem.startsWith(u8, cmd, "file ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         // FIXME: replace with choice + selection whenever that is implemented
         _ = std.fmt.bufPrint(&cmd_buf, "find {s} -type f -path '*{s}*' -or -name '*{s}*' | tee /tmp/file-search && ([ \"$(wc -l < /tmp/file-search)\" = \"1\" ] && ((file --mime \"$(head -n1 /tmp/file-search)\" | grep 'text/' &> /dev/null && cat \"$(head -n1 /tmp/file-search)\") || sushi \"$(head -n1 /tmp/file-search)\")) || echo \"not found\"\x00", .{ Config.searchDirectoriesString, cmd["file ".len..], cmd["file ".len..] }) catch "???";
         return &[_][]const u8{ "bash", "-c", &cmd_buf };
@@ -384,7 +384,7 @@ const FirefoxHistoryRunner = struct {
         return cmd.len > "ff ".len and std.mem.startsWith(u8, cmd, "ff ");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         // FIXME: replace with choice + selection whenever that is implemented
         const cmd_fmt =
             \\find ~/.mozilla -type f -name 'places.sqlite' -exec bash -c 'cp {{}} /tmp && sqlite3 /tmp/places.sqlite "select title, url from moz_places where url like \"%{s}%\" or url like \"%{s}%\" order by last_visit_date desc limit 100;" | tee /tmp/places-result; [ "$(wc -l < /tmp/places-result)" = "1" ] && xdg-open $(head -n1 /tmp/places-result | cut -d\| -f2) && test -f /usr/bin/swaymsg && swaymsg '[app_id="firefox"]' focus &> /dev/null; rm /tmp/places.sqlite;' \;
@@ -406,7 +406,7 @@ const LogsRunner = struct {
         return std.mem.startsWith(u8, cmd, "logs");
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         if (cmd.len <= "logs ".len) {
             return &[_][]const u8{ "bash", "-c", "SYSTEMD_COLORS=yes journalctl -b" };
         }
@@ -426,7 +426,7 @@ const QalcRunner = struct {
         return cmd.len > 0 and std.ascii.isDigit(cmd[0]);
     }
 
-    fn toArgv(cmd: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
         _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{cmd}) catch "???";
         return &[_][]const u8{ "qalc", "-terse", &cmd_buf };
     }
@@ -441,7 +441,7 @@ const SelfDocRunner = struct {
         return cmd.len == 0;
     }
 
-    fn toArgv(_: []const u8) []const []const u8 {
+    fn toArgv(_: []const u8, _: bool, _: []const u8) []const []const u8 {
         const print_help =
             "cat <<EOF\n" ++
             "\x1b[37mqck - type something, find something (quick)!\x1b[0m\n" ++
@@ -751,7 +751,7 @@ pub fn main() !void {
         if (commandChanged and c.SDL_GetTicks() - lastChange > 200) {
             const run = tracy.traceName(@src(), "run");
             for (commands) |*command| {
-                _ = try command.run(gpa, cmd, confirmed);
+                _ = try command.run(gpa, cmd, confirmed, "");
             }
             run.end();
 
