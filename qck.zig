@@ -154,7 +154,7 @@ const ProcessWithOutput = struct {
 };
 
 const Runner = struct {
-    name: []const u8,
+    name: [*c]const u8,
     run_always: bool,
     select: bool = false,
     process: ?ProcessWithOutput = null,
@@ -881,10 +881,9 @@ pub fn main() !void {
             // TODO: indicate if command is still running
 
             {
-                const name = try gpa.dupeZ(u8, command.name);
-                const result_text = c.TTF_RenderUTF8_Shaded(font, name, gray, c.SDL_Color{ .r = 0, .g = 0, .b = 0, .a = 255 });
-                gpa.free(name);
-                _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = window_width - @intCast(c_int, command.name.len) * glyph_width, .y = 0, .w = @intCast(c_int, command.name.len) * glyph_width, .h = glyph_height });
+                const result_text = c.TTF_RenderUTF8_Shaded(font, command.name, gray, c.SDL_Color{ .r = 0, .g = 0, .b = 0, .a = 255 });
+                const command_length = std.mem.len(command.name);
+                _ = c.SDL_BlitSurface(result_text, null, screen, &c.SDL_Rect{ .x = window_width - @intCast(c_int, command_length) * glyph_width, .y = 0, .w = @intCast(c_int, command_length) * glyph_width, .h = glyph_height });
                 c.SDL_FreeSurface(result_text);
             }
 
