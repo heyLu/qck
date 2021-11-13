@@ -7,14 +7,12 @@ const tracy = @import("./zig-tracy/src/lib.zig");
 const std = @import("std");
 
 // commands wishlist:
-// - search (e.g. default current dir + /usr/include)
 // - launch with logs (default launcher, use systemd-run --user --unit=name name?)
 // - switch to window
 // - open url
 // - open shortcuts (logs -> ..., tickets)
 // - history (could be another command + some special keybindings)
 // - hex (and other decodes, terminal escapes?)
-// - show docs if no command
 
 // TODO: implement suggestions by program
 // TODO: implement choosing from suggestions
