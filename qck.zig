@@ -968,6 +968,10 @@ pub fn main() !void {
                         }
                     }
 
+                    if (part_text.len == 0) {
+                        continue;
+                    }
+
                     var k = j;
                     var l: usize = 0;
                     var skip_next = false;
