@@ -392,9 +392,13 @@ const FileRunner = struct {
         return cmd.len > "file ".len and std.mem.startsWith(u8, cmd, "file ");
     }
 
-    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, is_confirmed: bool, selection: []const u8) []const []const u8 {
+        if (is_confirmed) {
+            _ = std.fmt.bufPrint(&cmd_buf, "{s}\x00", .{selection}) catch "???";
+            return &[_][]const u8{ "sushi", &cmd_buf };
+        }
         // FIXME: replace with choice + selection whenever that is implemented
-        _ = std.fmt.bufPrint(&cmd_buf, "find {s} -type f -path '*{s}*' -or -name '*{s}*' | tee /tmp/file-search && ([ \"$(wc -l < /tmp/file-search)\" = \"1\" ] && ((file --mime \"$(head -n1 /tmp/file-search)\" | grep 'text/' &> /dev/null && cat \"$(head -n1 /tmp/file-search)\") || sushi \"$(head -n1 /tmp/file-search)\")) || echo \"not found\"\x00", .{ Config.searchDirectoriesString, cmd["file ".len..], cmd["file ".len..] }) catch "???";
+        _ = std.fmt.bufPrint(&cmd_buf, "find {s} -type f -path '*{s}*' -or -name '*{s}*'\x00", .{ Config.searchDirectoriesString, cmd["file ".len..], cmd["file ".len..] }) catch "???";
         return &[_][]const u8{ "bash", "-c", &cmd_buf };
     }
 };
@@ -431,8 +435,13 @@ const LaunchRunner = struct {
         return !std.mem.containsAtLeast(u8, cmd, 1, " ") and (cmd.len > 0 or std.mem.startsWith(u8, cmd, "launch "));
     }
 
-    // TODO: confirm should launch (with logs if "application", i.e. no spaces in command?)
-    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
+    fn toArgv(cmd: []const u8, is_confirmed: bool, selection: []const u8) []const []const u8 {
+        if (is_confirmed) {
+            // TODO: run with bash and no logs if spaces in command
+            _ = std.fmt.bufPrint(&cmd_buf, "systemctl --user stop app-$(basename $(echo '{s}' | sed 's/\\x1b\\[[0-9;]*[a-zA-Z]//g')); systemd-run --user --remain-after-exit --unit=app-$(basename $(echo '{s}' | sed 's/\\x1b\\[[0-9;]*[a-zA-Z]//g')) $(echo '{s}' | sed 's/\\x1b\\[[0-9;]*[a-zA-Z]//g')\x00", .{ selection, selection, selection }) catch "???";
+            return &[_][]const u8{ "bash", "-c", &cmd_buf };
+        }
+
         const match = if (std.mem.startsWith(u8, cmd, "launch"))
             cmd["launch".len..]
         else
@@ -459,7 +468,7 @@ const LogsRunner = struct {
         }
 
         const service = cmd["logs ".len..];
-        _ = std.fmt.bufPrint(&cmd_buf, "export SYSTEMD_COLORS=yes; (systemctl status {s} &> /dev/null && journalctl -u {s} -f) || (systemctl status --user {s} &> /dev/null && journalctl --user -u {s} -f) || echo \"no logs for '{s}'\"\x00", .{ service, service, service, service, service }) catch "???";
+        _ = std.fmt.bufPrint(&cmd_buf, "export SYSTEMD_COLORS=yes; (systemctl cat {s} &> /dev/null && journalctl -u {s} -f) || (systemctl cat --user app-{s} &> /dev/null && journalctl --user -u app-{s} -f) || (systemctl cat --user {s} &> /dev/null && journalctl --user -u {s} -f) || echo \"no logs for '{s}'\"\x00", .{ service, service, service, service, service, service, service }) catch "???";
         return &[_][]const u8{ "bash", "-c", &cmd_buf };
     }
 };
@@ -764,8 +773,6 @@ pub fn main() !void {
                                 commandChanged = true;
                             },
                             c.SDLK_RETURN => {
-                                skip = 0;
-
                                 confirmed = true;
                             },
                             c.SDLK_UP => {
@@ -834,13 +841,39 @@ pub fn main() !void {
         if (confirmed or (commandChanged and c.SDL_GetTicks() - lastChange > 200)) {
             const run = tracy.trace(@src(), "run");
             for (commands) |*command| {
-                const handled = try command.run(gpa, cmd, confirmed, "");
-                if (confirmed and handled) {
+                const is_active = command.isActive(cmd);
+                if (!is_active) {
+                    continue;
+                }
+
+                var line: ?[]const u8 = null;
+                if (confirmed) {
+                    if (command.select) {
+                        const output = try command.output();
+                        var lines = std.mem.split(u8, output, "\n");
+                        line = lines.next();
+                        var skipped: i32 = 0;
+                        while (skipped < skip and line != null) : (skipped += 1) {
+                            line = lines.next();
+                        }
+                        if (line != null) {
+                            std.debug.print("line {d} '{s}' ({d} chars) selected\n", .{ skip, line.?, line.?.len });
+                        }
+                    }
+
+                    const selection = try gpa.dupe(u8, line orelse "");
+                    defer gpa.free(selection);
+
+                    _ = try command.run(gpa, cmd, confirmed, selection);
+                    std.debug.print("running...\n", .{});
+
                     // FIXME: don't wait here, print output until done?
                     if (command.process) |*process| {
                         _ = try process.process.wait();
                     }
                     quit = true;
+                } else {
+                    _ = try command.run(gpa, cmd, confirmed, "");
                 }
             }
             run.end();
