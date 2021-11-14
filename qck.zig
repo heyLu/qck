@@ -808,13 +808,15 @@ pub fn main() !void {
                                 }
                             },
                             c.SDLK_LEFT => {
-                                if (skip_horizontal > 0) {
-                                    skip_horizontal -= 1;
-                                    inputChanged = true;
+                                if (skip_horizontal < 10) {
+                                    skip_horizontal = 0;
+                                } else {
+                                    skip_horizontal -= 10;
                                 }
+                                inputChanged = true;
                             },
                             c.SDLK_RIGHT => {
-                                skip_horizontal += 1;
+                                skip_horizontal += 10;
                                 inputChanged = true;
                             },
                             else => {},
