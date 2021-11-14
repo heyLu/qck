@@ -707,6 +707,8 @@ pub fn main() !void {
                                 c.SDL_Log("Unable to create screen surface: %s", c.SDL_GetError());
                                 return error.SDLInitializationFailed;
                             };
+
+                            inputChanged = true;
                         },
                         else => {},
                     }
