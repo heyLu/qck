@@ -268,10 +268,19 @@ const PythonHelpRunner = struct {
         return cmd.len > 3 and std.mem.startsWith(u8, cmd, "py ");
     }
 
-    // TODO: confirm should open in browser
-    fn toArgv(cmd: []const u8, _: bool, _: []const u8) []const []const u8 {
-        _ = std.fmt.bufPrint(&cmd_buf, "import {s}; help({s});\x00", .{ std.mem.sliceTo(cmd["py ".len..], '.'), cmd["py ".len..] }) catch "???";
-        return &[_][]const u8{ "python", "-c", &cmd_buf };
+    fn toArgv(cmd: []const u8, is_confirmed: bool, _: []const u8) []const []const u8 {
+        if (is_confirmed) {
+            const prefix = "xdg-open https://docs.python.org/3/library/";
+            if (std.mem.containsAtLeast(u8, cmd, 1, ".")) {
+                _ = std.fmt.bufPrint(&cmd_buf, "{s}{s}.html#{s} && swaymsg '[app_id=\"firefox\"]' focus\x00", .{ prefix, std.mem.sliceTo(cmd["py ".len..], '.'), cmd["py ".len..] }) catch "???";
+            } else {
+                _ = std.fmt.bufPrint(&cmd_buf, "{s}{s}.html && swaymsg '[app_id=\"firefox\"]' focus\x00", .{ prefix, cmd["py ".len..] }) catch "???";
+            }
+            return &[_][]const u8{ "bash", "-c", &cmd_buf };
+        } else {
+            _ = std.fmt.bufPrint(&cmd_buf, "import {s}; help({s});\x00", .{ std.mem.sliceTo(cmd["py ".len..], '.'), cmd["py ".len..] }) catch "???";
+            return &[_][]const u8{ "python", "-c", &cmd_buf };
+        }
     }
 };
 
